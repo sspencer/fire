@@ -12,7 +12,7 @@ To use `fire`, create two environment variables with the following data:
 To fetch an object:
 
 ```bash
-    fire [-p] [-s] path/to/obj`
+    fire path/to/obj`
     
     Flags
       -k shallow, one key per line
