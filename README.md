@@ -15,6 +15,7 @@ To fetch an object:
     fire path/to/obj`
     
     Flags
+      -a prepend path to key (used with [-k])
       -k shallow, one key per line
       -p pretty print
       -s fetch shallow

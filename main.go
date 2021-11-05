@@ -11,10 +11,20 @@ import (
 	"github.com/pkg/errors"
 	"google.golang.org/api/option"
 	"os"
+	"path"
 	"strings"
 )
 
+type cmdParams struct {
+	obj string
+	append bool
+	key bool
+	pretty bool
+	shallow bool
+}
+
 func main() {
+	appendPtr := flag.Bool("a", false, "Prepend path to keys [-k]")
 	keyPtr := flag.Bool("k", false, "Print top level keys, one per line")
 	prettyPtr := flag.Bool("p", false, "Pretty print JSON")
 	shallowPtr := flag.Bool("s", false, "Shallow Fetch")
@@ -28,7 +38,15 @@ func main() {
 		os.Exit(1)
 	}
 
-	json, err := fetch(flag.Arg(0), *keyPtr, *prettyPtr, *shallowPtr)
+	cmd := cmdParams{
+		obj:     flag.Arg(0),
+		append:  *appendPtr,
+		key:     *keyPtr,
+		pretty:  *prettyPtr,
+		shallow: *shallowPtr,
+	}
+
+	json, err := fetch(cmd)
 	if err != nil {
 		fmt.Fprintln(os.Stderr, err)
 		os.Exit(2)
@@ -36,7 +54,7 @@ func main() {
 	fmt.Println(json)
 }
 
-func fetch(obj string, keyPrint, prettyPrint, shallow bool) (string, error) {
+func fetch(cmd cmdParams) (string, error) {
 	ctx := context.Background()
 	conf := &firebase.Config{
 		DatabaseURL: env("FIRE_URL"),
@@ -55,18 +73,18 @@ func fetch(obj string, keyPrint, prettyPrint, shallow bool) (string, error) {
 		return "", errors.Wrap(err, "Error initializing database client")
 	}
 
-	ref := client.NewRef(obj)
+	ref := client.NewRef(cmd.obj)
 
-	if keyPrint {
-		return keyFetch(ctx, ref)
-	} else if shallow {
-		return shallowFetch(ctx, ref, prettyPrint)
+	if cmd.key {
+		return keyFetch(ctx, ref, cmd)
+	} else if cmd.shallow {
+		return shallowFetch(ctx, ref, cmd)
 	} else {
-		return deepFetch(ctx, ref, prettyPrint)
+		return deepFetch(ctx, ref, cmd)
 	}
 }
 
-func keyFetch(ctx context.Context, ref *db.Ref) (string, error) {
+func keyFetch(ctx context.Context, ref *db.Ref, cmd cmdParams) (string, error) {
 	var data map[string]bool
 	if err := ref.GetShallow(ctx, &data); err != nil {
 		return "", errors.Wrap(err, "Error reading from database")
@@ -75,29 +93,35 @@ func keyFetch(ctx context.Context, ref *db.Ref) (string, error) {
 	keys := make([]string, len(data))
 	i := 0
 	for k := range data {
-		keys[i] = k
+		var key string
+		if cmd.append {
+			key = path.Join(cmd.obj, k)
+		} else {
+			key = k
+		}
+		keys[i] = key
 		i++
 	}
 
 	return strings.Join(keys, "\n"), nil
 }
 
-func shallowFetch(ctx context.Context, ref *db.Ref, prettyPrint bool) (string, error) {
+func shallowFetch(ctx context.Context, ref *db.Ref, cmd cmdParams) (string, error) {
 	var data interface{}
 	if err := ref.GetShallow(ctx, &data); err != nil {
 		return "", errors.Wrap(err, "Error reading from database")
 	}
 
-	return jsonPrettyPrint(data, prettyPrint)
+	return jsonPrettyPrint(data, cmd.pretty)
 }
 
-func deepFetch(ctx context.Context, ref *db.Ref, prettyPrint bool) (string, error) {
+func deepFetch(ctx context.Context, ref *db.Ref, cmd cmdParams) (string, error) {
 	var data interface{}
 	if err := ref.Get(ctx, &data); err != nil {
 		return "", errors.Wrap(err, "Error reading from database")
 	}
 
-	return jsonPrettyPrint(data, prettyPrint)
+	return jsonPrettyPrint(data, cmd.pretty)
 }
 
 func jsonPrettyPrint(data interface{}, prettyPrint bool) (string, error) {
